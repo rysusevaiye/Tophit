@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TOPHIT // File Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root { --g:#00ff9c; --g2:#00b36d; --dim:#0a3d2a; --bg:#020805; --red:#ff3860; --cy:#00e5ff; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; background:var(--bg); color:var(--g); font-family:'Share Tech Mono',monospace; }
+  canvas#rain { position:fixed; inset:0; z-index:0; opacity:.18; }
+  body::after { content:""; position:fixed; inset:0; pointer-events:none; z-index:5;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.25) 0 1px, transparent 1px 3px); }
+  .wrap { position:relative; z-index:1; max-width:760px; margin:0 auto; padding:32px 16px 60px; }
+  h1 { font-size:clamp(22px,5vw,38px); margin:0 0 4px; letter-spacing:4px; text-shadow:0 0 8px var(--g),0 0 22px var(--g2); }
+  h1 .glitch { animation:flick 3s infinite; }
+  @keyframes flick { 0%,92%,100%{opacity:1} 93%{opacity:.2} 95%{opacity:1} 97%{opacity:.4} }
+  .sub { color:var(--g2); font-size:13px; margin-bottom:24px; }
+  .sub .cur { animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50%{opacity:0} }
+  .panel { border:1px solid var(--g2); background:rgba(0,20,10,.75); box-shadow:0 0 18px rgba(0,255,156,.15) inset, 0 0 12px rgba(0,255,156,.12);
+    padding:18px; margin-bottom:18px; position:relative; }
+  .panel::before { content:attr(data-label); position:absolute; top:-10px; left:12px; background:var(--bg); padding:0 6px; font-size:12px; color:var(--cy); }
+  .row { display:flex; gap:10px; flex-wrap:wrap; }
+  input { flex:1 1 180px; min-width:0; background:#000; color:var(--g); border:1px solid var(--g2); padding:12px; font:inherit; font-size:16px; outline:none; caret-color:var(--g); }
+  input[type=number] { flex:0 1 140px; }
+  input:focus { border-color:var(--g); box-shadow:0 0 10px var(--g); }
+  input::placeholder { color:var(--dim); }
+  button { background:transparent; color:var(--g); border:1px solid var(--g); padding:11px 16px; font:inherit; font-size:14px; letter-spacing:2px; cursor:pointer; text-transform:uppercase; transition:.15s; }
+  button:hover { background:var(--g); color:#000; box-shadow:0 0 16px var(--g); }
+  button.warn { color:var(--red); border-color:var(--red); }
+  button.warn:hover { background:var(--red); color:#000; box-shadow:0 0 16px var(--red); }
+  button.cy { color:var(--cy); border-color:var(--cy); }
+  button.cy:hover { background:var(--cy); color:#000; box-shadow:0 0 16px var(--cy); }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+  ol { list-style:none; margin:0; padding:0; counter-reset:n; }
+  li { counter-increment:n; display:flex; align-items:center; gap:12px; padding:10px 6px; border-bottom:1px dashed var(--dim); animation:in .35s ease-out; }
+  li::before { content:"[" counter(n, decimal-leading-zero) "]"; color:var(--g2); }
+  @keyframes in { from{opacity:0; transform:translateX(-12px); filter:blur(3px)} to{opacity:1} }
+  li .name { flex:1; overflow-wrap:anywhere; }
+  li .cnt { color:var(--cy); min-width:60px; text-align:right; text-shadow:0 0 6px var(--cy); }
+  li .x { padding:2px 8px; font-size:12px; border-color:var(--dim); color:var(--g2); }
+  li.top .name, li.top .cnt { color:#fff; text-shadow:0 0 10px var(--g); }
+  .empty { color:var(--dim); padding:10px 6px; }
+  .status { font-size:13px; color:var(--g2); margin-top:12px; min-height:18px; }
+  .badge { display:inline-block; font-size:11px; padding:2px 6px; border:1px solid var(--cy); color:var(--cy); margin-left:8px; vertical-align:middle; }
+  details { margin-top:10px; }
+  summary { cursor:pointer; color:var(--g2); }
+  .arch { padding:8px 0; border-bottom:1px dashed var(--dim); font-size:13px; }
+  .arch b { color:var(--cy); font-weight:normal; }
+</style>
+</head>
+<body>
+<canvas id="rain"></canvas>
+<div class="wrap">
+  <h1>&gt; <span class="glitch">TOPHIT</span>_SYS</h1>
+  <div class="sub">root@tophit:~# file_count --track <span class="cur">█</span></div>
+
+  <div class="panel" data-label="// INJECT ENTRY">
+    <form id="f" class="row" autocomplete="off">
+      <input id="name" type="text" placeholder="target_name" required>
+      <input id="count" type="number" min="0" placeholder="file_count" required>
+      <button type="submit">Exec</button>
+    </form>
+  </div>
+
+  <div class="panel" data-label="// ACTIVE LIST">
+    <div id="title" style="margin-bottom:8px"></div>
+    <ol id="list"></ol>
+    <div class="actions" style="margin-top:16px">
+      <button class="cy" id="done">Complete &amp; Sort</button>
+      <button class="warn" id="reset">Reset Counts</button>
+      <button id="new">New List</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="panel" data-label="// ARCHIVE">
+    <div id="archive"></div>
+  </div>
+</div>
+
+<script>
+const KEY = 'tophit_state_v1';
+let state = load();
+
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.current) return s; } catch (e) {}
+  return { current: { items: [], done: false, created: Date.now() }, archive: [] };
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sorted = items => [...items].sort((a, b) => b.count - a.count);
+
+function status(msg) {
+  const el = $('status'); el.textContent = '';
+  let i = 0; const t = '> ' + msg;
+  (function type() { if (i <= t.length) { el.textContent = t.slice(0, i++); setTimeout(type, 12); } })();
+}
+
+function render() {
+  const c = state.current;
+  $('title').innerHTML = 'LIST_' + new Date(c.created).toISOString().slice(0,16).replace('T','_') +
+    (c.done ? '<span class="badge">SORTED</span>' : '');
+  const items = c.done ? sorted(c.items) : c.items;
+  $('list').innerHTML = items.length ? items.map((it, i) =>
+    `<li class="${c.done && i === 0 ? 'top' : ''}"><span class="name">${esc(it.name)}</span>
+     <span class="cnt">${it.count}</span><button class="x" data-id="${it.id}">del</button></li>`).join('')
+    : '<div class="empty">// no entries. awaiting input...</div>';
+
+  $('archive').innerHTML = state.archive.length ? state.archive.map(a =>
+    `<details><summary>LIST_${new Date(a.created).toISOString().slice(0,16).replace('T','_')} — ${a.items.length} entries</summary>
+     ${sorted(a.items).map((it, i) => `<div class="arch">[${String(i+1).padStart(2,'0')}] ${esc(it.name)} <b>${it.count}</b></div>`).join('')}
+     </details>`).reverse().join('')
+    : '<div class="empty">// archive empty</div>';
+}
+
+$('f').addEventListener('submit', e => {
+  e.preventDefault();
+  const name = $('name').value.trim(), count = parseInt($('count').value, 10);
+  if (!name || isNaN(count)) return;
+  state.current.items.push({ id: Date.now() + Math.random(), name, count });
+  save(); render(); status(`entry "${name}" injected [${count}]`);
+  $('name').value = ''; $('count').value = ''; $('name').focus();
+});
+
+$('list').addEventListener('click', e => {
+  const id = e.target.dataset.id; if (!id) return;
+  state.current.items = state.current.items.filter(i => String(i.id) !== id);
+  save(); render(); status('entry purged');
+});
+
+$('done').onclick = () => {
+  if (!state.current.items.length) return status('ERR: list empty');
+  state.current.done = true; save(); render(); status('list compiled. sorted by file_count DESC');
+};
+
+$('reset').onclick = () => {
+  if (!state.current.items.length) return status('ERR: nothing to reset');
+  if (!confirm('Reset all counts to 0?')) return;
+  state.current.items.forEach(i => i.count = 0);
+  save(); render(); status('all counters zeroed');
+};
+
+$('new').onclick = () => {
+  if (state.current.items.length) {
+    if (!confirm('Archive current list and start a new one?')) return;
+    state.archive.push(state.current);
+  }
+  state.current = { items: [], done: false, created: Date.now() };
+  save(); render(); status('new list initialized');
+};
+
+render(); status('system online. session restored.');
+
+// matrix rain
+const cv = $('rain'), cx = cv.getContext('2d');
+let cols, drops;
+function size() { cv.width = innerWidth; cv.height = innerHeight; cols = Math.floor(cv.width / 16); drops = Array(cols).fill(0).map(() => Math.random() * -50); }
+size(); addEventListener('resize', size);
+const chars = 'アカサタナハマヤラワ0123456789ABCDEF<>/{}#$%';
+setInterval(() => {
+  cx.fillStyle = 'rgba(2,8,5,.12)'; cx.fillRect(0, 0, cv.width, cv.height);
+  cx.fillStyle = '#00ff9c'; cx.font = '15px monospace';
+  drops.forEach((y, i) => {
+    cx.fillText(chars[Math.random() * chars.length | 0], i * 16, y * 16);
+    drops[i] = (y * 16 > cv.height && Math.random() > .975) ? 0 : y + 1;
+  });
+}, 50);
+</script>
+</body>
+</html>
